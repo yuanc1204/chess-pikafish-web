@@ -64,6 +64,11 @@ python -m py_compile server.py
 python -m unittest discover -s tests -v
 ```
 
-## 引擎与许可
+## 许可
 
-Pikafish 是基于 Stockfish 的开源中国象棋引擎。相关作者、许可和上游文档保留在 `Pikafish/` 目录中；更新引擎时请同时替换兼容的 `pikafish.exe` 与 `pikafish.nnue`。上游项目：[official-pikafish/Pikafish](https://github.com/official-pikafish/Pikafish)。
+本项目原创代码及相关项目文件采用 [MIT License](LICENSE)。`Pikafish/` 目录不适用根目录 MIT 许可，其中：
+
+- `pikafish.exe` 采用 GNU GPLv3，完整许可与作者信息保留在 `Pikafish/`。
+- `pikafish.nnue` 采用独立的 [NNUE 许可](Pikafish/NNUE-License.md)，包含未经许可不得商用等条款。
+
+详细说明见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。Pikafish 上游项目：[official-pikafish/Pikafish](https://github.com/official-pikafish/Pikafish)。更新引擎时请同时替换相互兼容的 `pikafish.exe` 与 `pikafish.nnue`。
