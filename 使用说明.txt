@@ -24,7 +24,6 @@
   Pikafish\           ← 引擎本体
       pikafish.exe        当前使用的引擎（vnni512 档，已实测最快）
       pikafish.nnue       神经网络权重（必须与 exe 同目录）
-      Windows\            其余 CPU 档位（avx512/bmi2/avx2…，可自行替换）
 
 【想换更强/更快引擎】
   以后官方发新版，只需到 GitHub 下载新包，替换 Pikafish\pikafish.exe
@@ -37,9 +36,3 @@
   Pikafish\pikafish.exe（UCI 协议）即可。
   官方新手整合包（自带界面）：https://www.pikafish.com/
 ================================================
-安卓识盘辅助版
-==============
-
-安卓工程位于 android\，详细安装和使用步骤见 android\README.md。
-它使用系统截屏授权监控固定竖屏棋盘，在本机调用 Pikafish，并通过悬浮箭头提示着法；
-当前版本由用户手动确认落子，不会自动点击第三方应用。

@@ -13,11 +13,6 @@ Pikafish/Windows/
 *.log
 __pycache__/
 
-# Android 构建产物与本机 SDK 路径
-/android/.gradle/
-/android/local.properties
-/android/app/build/
-
 # 录屏源文件（游戏使用的是 web/audio/ 下提取后的音效）
 /音频/
 
