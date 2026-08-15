@@ -1,0 +1,952 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>中国象棋 · Pikafish</title>
+<style>
+  * { box-sizing: border-box; }
+  /* 始终预留竖向滚动条空间，避免内容高度变化时页面宽度抖动、棋盘左右偏移 */
+  html { scrollbar-gutter: stable; overflow-y: scroll; }
+  body {
+    margin: 0; font-family: "Microsoft YaHei", "PingFang SC", sans-serif;
+    background: #2b2620; color: #eee; display: flex; justify-content: center;
+    padding: 18px; gap: 22px; flex-wrap: wrap; overflow-x: hidden;
+  }
+  .game-layout {
+    position: relative; display: flex; justify-content: center; align-items: flex-start;
+    width: fit-content; max-width: 100%; gap: 22px; flex-wrap: wrap;
+  }
+  #board {
+    background-color: #e6c48b;
+    background-image:
+      radial-gradient(ellipse at 28% 18%, rgba(255,247,213,.52), transparent 42%),
+      repeating-linear-gradient(2deg, rgba(112,72,35,.035) 0 1px, transparent 1px 18px),
+      linear-gradient(90deg, rgba(141,91,43,.08), transparent 22%, rgba(255,255,255,.08) 52%, transparent 78%, rgba(116,72,32,.07));
+    border-radius: 10px;
+    box-shadow: inset 0 0 0 5px rgba(123,78,37,.22), inset 0 0 22px rgba(92,55,25,.18), 0 9px 26px rgba(0,0,0,.5);
+    touch-action: none;
+  }
+  #board, #board * { -webkit-user-select: none; user-select: none; }   /* 拖动时不选中文字 */
+  #board .hit { cursor: pointer; }
+  #board .cell { will-change: transform; }
+  #board .piece-shell { transform-box: fill-box; transform-origin: center; }
+  #board .ghost .piece-shell {
+    transform: translateY(-4px) scale(1.055);
+    filter: url(#pieceLiftShadow);
+  }
+  #board .moving .piece-shell { filter: url(#pieceLiftShadow); }
+  .panel { width: 260px; flex: 0 0 260px; }
+  .game-layout.panel-collapsed .panel { display: none; }
+  #panelToggle {
+    position: absolute; z-index: 12; left: 571px; top: 310px;
+    transform: translate(-50%, -50%); width: 22px; height: 44px; padding: 0;
+    border: 0; border-radius: 0; background: transparent;
+    color: #c8b695; font-size: 28px; line-height: 1;
+    box-shadow: none; text-shadow: 0 1px 3px rgba(0,0,0,.7);
+  }
+  #panelToggle:hover { background: transparent; color: #f5c97a; }
+  h1 { font-size: 20px; margin: 4px 0 14px; color: #f5c97a; }
+  .row { margin: 12px 0; }
+  label { font-size: 13px; color: #bbb; display: block; margin-bottom: 5px; }
+  select, button {
+    width: 100%; padding: 9px 10px; font-size: 14px; border-radius: 6px;
+    border: 1px solid #555; background: #3a352d; color: #eee; cursor: pointer;
+  }
+  button:hover { background: #4a443a; }
+  button.primary { background: #b5462f; border-color: #b5462f; color: #fff; font-weight: bold; }
+  button.primary:hover { background: #c8503a; }
+  .btns { display: flex; gap: 8px; }
+  .btns button { width: auto; flex: 1; }
+  #status {
+    margin-top: 14px; padding: 12px; background: #1f1b16; border-radius: 6px;
+    font-size: 14px; min-height: 44px; line-height: 1.5;
+  }
+  .engine-detail { margin-top: 8px; padding-top: 8px; border-top: 1px solid #3b342a; }
+  .eval-head { color: #f5c97a; font-size: 15px; font-weight: bold; margin-bottom: 7px; }
+  .wdl-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; }
+  .wdl-item { padding: 5px 3px; border-radius: 4px; text-align: center; background: #2c2720; color: #bbb; font-size: 12px; }
+  .wdl-item b { display: block; margin-top: 1px; color: #eee; font-size: 14px; }
+  .wdl-item.win b { color: #ef7c68; }
+  .wdl-item.draw b { color: #ddd0b8; }
+  .wdl-item.loss b { color: #73a9d8; }
+  .expected { margin-top: 6px; color: #aaa; font-size: 12px; }
+  .expected b { color: #f5c97a; font-size: 14px; }
+  .search-meta { display: flex; flex-wrap: wrap; gap: 4px 10px; margin-top: 7px; color: #8f887e; font-size: 11px; }
+  .search-meta span { white-space: nowrap; }
+  .search-meta .explain { cursor: help; border-bottom: 1px dotted #777; }
+  .search-meta .pending { color: #d89b65; }
+  #logDialog {
+    width: min(380px, calc(100vw - 32px)); padding: 0; overflow: hidden;
+    border: 1px solid #554b3e; border-radius: 8px; background: #1f1b16;
+    color: #eee; box-shadow: 0 12px 42px rgba(0,0,0,.65);
+  }
+  #logDialog::backdrop { background: rgba(15,12,9,.72); }
+  .log-head {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 12px; border-bottom: 1px solid #3b342a; color: #f5c97a;
+  }
+  #closeLog {
+    width: 30px; padding: 1px; border: 0; background: transparent;
+    color: #aaa; font-size: 22px; line-height: 1;
+  }
+  #closeLog:hover { background: #3a352d; color: #fff; }
+  #movelist {
+    height: min(440px, 60vh); overflow-y: auto; background: #1f1b16;
+    padding: 10px 12px; font-size: 12px; color: #aaa;
+    font-family: Consolas, monospace; white-space: pre-wrap;
+  }
+  .log-empty { display: block; padding-top: 36px; color: #777; text-align: center; }
+  .tag { color: #f5c97a; }
+  .checks { display:flex; flex-wrap:wrap; gap:10px 18px; }
+  .chk { display:flex; align-items:center; gap:6px; font-size:13px; color:#ddd; margin:0; cursor:pointer; }
+  .chk input { width:auto; margin:0; cursor:pointer; }
+  .volume-label { display:flex; justify-content:space-between; align-items:center; }
+  #volumeValue { color:#f5c97a; font-variant-numeric:tabular-nums; }
+  #soundVolume {
+    --volume-pct: 100%; appearance:none; -webkit-appearance:none;
+    display:block; width:100%; height:5px; margin:10px 0 4px; border-radius:999px;
+    background:linear-gradient(to right, #d3a85f 0 var(--volume-pct), #595249 var(--volume-pct) 100%);
+    cursor:pointer;
+  }
+  #soundVolume::-webkit-slider-thumb {
+    appearance:none; -webkit-appearance:none; width:17px; height:17px;
+    border:2px solid #2b2620; border-radius:50%; background:#f5c97a;
+    box-shadow:0 1px 5px rgba(0,0,0,.55);
+  }
+  #soundVolume::-moz-range-thumb {
+    width:14px; height:14px; border:2px solid #2b2620; border-radius:50%;
+    background:#f5c97a; box-shadow:0 1px 5px rgba(0,0,0,.55);
+  }
+  @media (max-width: 640px) {
+    #panelToggle { position:fixed; left:auto; right:0; top:50%; transform:translateY(-50%); }
+  }
+  piece { cursor: pointer; }
+</style>
+</head>
+<body>
+<main id="gameLayout" class="game-layout">
+<svg id="board" width="560" height="620" viewBox="0 0 560 620"></svg>
+
+<button id="panelToggle" type="button" aria-label="收起右侧栏" aria-controls="sidePanel" aria-expanded="true" title="收起右侧栏">&gt;</button>
+
+<aside class="panel" id="sidePanel">
+  <h1>🐟 中国象棋 · Pikafish</h1>
+  <div class="row">
+    <label>难度</label>
+    <select id="level">
+      <option value="1">1 · 新手（会失误）</option>
+      <option value="2">2 · 入门</option>
+      <option value="3">3 · 业余</option>
+      <option value="4" selected>4 · 高手（约 0.1 秒）</option>
+      <option value="5">5 · 棋手</option>
+      <option value="6">6 · 大师</option>
+      <option value="7">7 · 大神（最强）</option>
+    </select>
+  </div>
+  <div class="row">
+    <label>我执</label>
+    <select id="side">
+      <option value="w" selected>红方</option>
+      <option value="b">黑方</option>
+    </select>
+  </div>
+  <div class="row btns">
+    <button class="primary" id="newgame">新对局</button>
+    <button id="undo">悔棋</button>
+  </div>
+  <div class="row">
+    <button id="flip">⇅ 翻转棋盘</button>
+  </div>
+  <div class="row">
+    <button id="assistMove" title="替当前方走一步；若自动应着开启，对手随后正常回复">✨ AI 帮走一步</button>
+  </div>
+  <div class="row checks">
+    <label class="chk" title="所选一方落子后，AI 自动替对手回复一步"><input type="checkbox" id="aiToggle" checked> AI 自动应着</label>
+    <label class="chk"><input type="checkbox" id="autoSingle" checked> 唯一走法自动走</label>
+    <label class="chk" title="每次落子后只评估当前局面，不会替任何一方走棋"><input type="checkbox" id="liveEval" checked> 实时胜率</label>
+  </div>
+  <div id="status">点击“新对局”开始。</div>
+  <div class="row">
+    <label class="volume-label" for="soundVolume"><span>音量</span><output id="volumeValue" for="soundVolume">100</output></label>
+    <input id="soundVolume" type="range" min="0" max="100" step="1" value="100">
+  </div>
+  <div class="row">
+    <button id="openLog">☰ 对局日志</button>
+  </div>
+</aside>
+</main>
+
+<div id="soundbank" hidden aria-hidden="true">
+  <audio data-sound="move" preload="auto" src="/audio/move.wav"></audio>
+  <audio data-sound="capture" preload="auto" src="/audio/capture.wav"></audio>
+  <audio data-sound="check" preload="auto" src="/audio/check.wav"></audio>
+  <audio data-sound="redWin" preload="auto" src="/audio/red-win.wav"></audio>
+  <audio data-sound="blackWin" preload="auto" src="/audio/black-win.wav"></audio>
+</div>
+
+<dialog id="logDialog">
+  <div class="log-head"><strong>对局日志</strong><button id="closeLog" aria-label="关闭">×</button></div>
+  <div id="movelist"><span class="log-empty">暂无着法记录</span></div>
+</dialog>
+
+<script>
+const SVG = "http://www.w3.org/2000/svg";
+const M = 40, CELL = 60;               // 边距、格距
+const board = document.getElementById("board");
+const START = "rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR";
+const CH = {
+  k:["将","b"], a:["士","b"], b:["象","b"], n:["馬","b"], r:["車","b"], c:["炮","b"], p:["卒","b"],
+  K:["帥","r"], A:["仕","r"], B:["相","r"], N:["馬","r"], R:["車","r"], C:["炮","r"], P:["兵","r"],
+};
+const sounds = Object.fromEntries(
+  [...document.querySelectorAll("#soundbank audio")].map(audio => [audio.dataset.sound, audio])
+);
+const MAX_SOUND_VOLUME = 0.7;           // 滑条 100 对应当前音量
+let soundVolume = MAX_SOUND_VOLUME;
+const SOUND_PRIORITY = {move:1, capture:2, check:3, redWin:4, blackWin:4};
+const activeSounds = new Set();
+
+function stopSound(){
+  for (const audio of activeSounds){
+    audio.pause();
+    audio.currentTime = 0;
+  }
+  activeSounds.clear();
+}
+
+function playSound(name){
+  const audio = sounds[name];
+  if (!audio || soundVolume <= 0) return;
+  const priority = SOUND_PRIORITY[name] || 0;
+  for (const playing of [...activeSounds]){
+    if (playing.paused || playing.ended){
+      activeSounds.delete(playing);
+      continue;
+    }
+    const playingPriority = SOUND_PRIORITY[playing.dataset.sound] || 0;
+    if (playingPriority > priority) return; // 吃子/将军未结束时忽略普通落子声
+    if (playingPriority < priority){
+      playing.pause();
+      playing.currentTime = 0;
+      activeSounds.delete(playing);
+    }
+  }
+  audio.currentTime = 0;
+  audio.volume = soundVolume;
+  activeSounds.add(audio);
+  audio.onended = () => activeSounds.delete(audio);
+  audio.play().catch(() => activeSounds.delete(audio));
+}
+
+// 首次用户操作时静音预播一次，保证之后 AI 落子也能正常发声。
+function unlockSounds(){
+  for (const audio of Object.values(sounds)){
+    audio.muted = true;
+    const started = audio.play();
+    if (started) started.then(() => {
+      audio.pause(); audio.currentTime = 0; audio.muted = false;
+    }).catch(() => { audio.muted = false; });
+  }
+}
+document.addEventListener("pointerdown", unlockSounds, {once:true, capture:true});
+
+const volumeInput = document.getElementById("soundVolume");
+const volumeValue = document.getElementById("volumeValue");
+function setSoundVolume(rawValue, persist=true){
+  const value = Math.max(0, Math.min(100, Math.round(Number(rawValue) || 0)));
+  soundVolume = MAX_SOUND_VOLUME * value / 100;
+  volumeInput.value = value;
+  volumeInput.style.setProperty("--volume-pct", `${value}%`);
+  volumeValue.textContent = value;
+  for (const audio of Object.values(sounds)) audio.volume = soundVolume;
+  if (value === 0) stopSound();
+  if (persist){
+    try { localStorage.setItem("xiangqiSoundVolume", value); } catch (e) {}
+  }
+}
+let savedVolume = 100;
+try {
+  const storedVolume = Number.parseInt(localStorage.getItem("xiangqiSoundVolume"), 10);
+  if (Number.isFinite(storedVolume)) savedVolume = storedVolume;
+} catch (e) {}
+setSoundVolume(savedVolume, false);
+volumeInput.addEventListener("input", () => setSoundVolume(volumeInput.value));
+
+const gameLayout = document.getElementById("gameLayout");
+const panelToggle = document.getElementById("panelToggle");
+function setPanelCollapsed(collapsed){
+  gameLayout.classList.toggle("panel-collapsed", collapsed);
+  panelToggle.textContent = collapsed ? "<" : ">";
+  panelToggle.setAttribute("aria-expanded", String(!collapsed));
+  const label = collapsed ? "展开右侧栏" : "收起右侧栏";
+  panelToggle.setAttribute("aria-label", label);
+  panelToggle.title = label;
+}
+panelToggle.addEventListener("click", () => {
+  setPanelCollapsed(!gameLayout.classList.contains("panel-collapsed"));
+});
+
+let state = {};
+
+function fenToBoard(fen) {
+  const b = Array.from({length:10}, () => Array(9).fill(null));
+  fen.split("/").forEach((rowStr, i) => {
+    const rank = 9 - i;          // FEN 从 rank9（上）到 rank0（下）
+    let file = 0;
+    for (const ch of rowStr) {
+      if (/\d/.test(ch)) file += parseInt(ch);
+      else { b[rank][file] = ch; file++; }
+    }
+  });
+  return b;
+}
+function px(file, rank) {
+  if (state.flipped) return [M + (8-file)*CELL, M + rank*CELL];   // 翻转：黑方在下
+  return [M + file*CELL, M + (9-rank)*CELL];
+}
+function parseUci(m){ return { ff:m.charCodeAt(0)-97, fr:+m[1], tf:m.charCodeAt(2)-97, tr:+m[3] }; }
+
+function applyMove(b, uci) {
+  const {ff,fr,tf,tr} = parseUci(uci);
+  b[tr][tf] = b[fr][ff]; b[fr][ff] = null;
+}
+
+function lineBlockers(b, f1, r1, f2, r2){
+  let count = 0;
+  if (f1 === f2){
+    for (let r=Math.min(r1,r2)+1; r<Math.max(r1,r2); r++) if (b[r][f1]) count++;
+    return count;
+  }
+  if (r1 === r2){
+    for (let f=Math.min(f1,f2)+1; f<Math.max(f1,f2); f++) if (b[r1][f]) count++;
+    return count;
+  }
+  return -1;
+}
+
+function isKingInCheck(b, side){
+  const king = side === "w" ? "K" : "k";
+  let kf = -1, kr = -1;
+  for (let r=0; r<10; r++) for (let f=0; f<9; f++){
+    if (b[r][f] === king){ kf=f; kr=r; }
+  }
+  if (kf < 0) return true;
+  const enemy = side === "w" ? "b" : "w";
+  for (let r=0; r<10; r++) for (let f=0; f<9; f++){
+    const pc = b[r][f];
+    if (!pc || (pc === pc.toUpperCase() ? "w" : "b") !== enemy) continue;
+    const kind = pc.toLowerCase(), df = kf-f, dr = kr-r;
+    const adf = Math.abs(df), adr = Math.abs(dr);
+    const blockers = lineBlockers(b, f, r, kf, kr);
+    if (kind === "r" && blockers === 0) return true;
+    if (kind === "c" && blockers === 1) return true;
+    if (kind === "k" && ((f === kf && blockers === 0) || adf+adr === 1)) return true;
+    if (kind === "n" && ((adf === 2 && adr === 1 && !b[r][f+Math.sign(df)]) ||
+                         (adf === 1 && adr === 2 && !b[r+Math.sign(dr)][f]))) return true;
+    if (kind === "a" && adf === 1 && adr === 1) return true;
+    if (kind === "b" && adf === 2 && adr === 2 && !b[r+dr/2][f+df/2]) return true;
+    if (kind === "p"){
+      const forward = enemy === "w" ? -1 : 1;
+      const crossed = enemy === "w" ? r <= 4 : r >= 5;
+      if ((df === 0 && dr === forward) || (crossed && dr === 0 && adf === 1)) return true;
+    }
+  }
+  return false;
+}
+
+function drawPieceDefs(){
+  return `<defs>
+    <radialGradient id="pieceFace" cx="34%" cy="25%" r="78%">
+      <stop offset="0" stop-color="#fff4d5"/>
+      <stop offset=".55" stop-color="#edcd97"/>
+      <stop offset=".82" stop-color="#d59a5f"/>
+      <stop offset="1" stop-color="#b36d37"/>
+    </radialGradient>
+    <linearGradient id="pieceEdge" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#dca66d"/>
+      <stop offset=".55" stop-color="#a95f2f"/>
+      <stop offset="1" stop-color="#78401f"/>
+    </linearGradient>
+    <filter id="pieceShadow" x="-35%" y="-35%" width="170%" height="185%">
+      <feDropShadow dx="0" dy="3" stdDeviation="2.2" flood-color="#3c2415" flood-opacity=".42"/>
+    </filter>
+    <filter id="pieceLiftShadow" x="-45%" y="-45%" width="190%" height="205%">
+      <feDropShadow dx="0" dy="7" stdDeviation="3.8" flood-color="#2a180e" flood-opacity=".48"/>
+    </filter>
+  </defs>`;
+}
+
+function drawBoardLines() {
+  const ns = [];
+  const line = (x1,y1,x2,y2) => `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="#5a3a1a" stroke-width="1.6"/>`;
+  // 横线 10 条
+  for (let r=0;r<10;r++){ const [x1,y]=px(0,r); const [x2]=px(8,r); ns.push(line(x1,y,x2,y)); }
+  // 竖线 9 条（中间河界断开，最外两条连续）
+  for (let f=0;f<9;f++){
+    if (f===0 || f===8){ const [x,y1]=px(f,9); const [,y2]=px(f,0); ns.push(line(x,y1,x,y2)); }
+    else {
+      const [x,ya]=px(f,9); const [,yb]=px(f,5); ns.push(line(x,ya,x,yb));
+      const [,yc]=px(f,4); const [,yd]=px(f,0); ns.push(line(x,yc,x,yd));
+    }
+  }
+  // 九宫斜线
+  const diag=(f1,r1,f2,r2)=>{const[a,b]=px(f1,r1);const[c,d]=px(f2,r2);return line(a,b,c,d);};
+  ns.push(diag(3,9,5,7), diag(5,9,3,7), diag(3,0,5,2), diag(5,0,3,2));
+  // 楚河汉界
+  const [rx,ry]=px(1.4,4.5); const [rx2]=px(6.0,4.5);
+  ns.push(`<text x="${rx}" y="${ry+6}" font-size="22" fill="#7a4a1a" letter-spacing="6">楚 河</text>`);
+  ns.push(`<text x="${rx2}" y="${ry+6}" font-size="22" fill="#7a4a1a" letter-spacing="6">漢 界</text>`);
+  return ns.join("");
+}
+
+function drawPositionMarks() {
+  const positions = [
+    [1,2], [7,2], [1,7], [7,7],
+    ...[0,2,4,6,8].flatMap(file => [[file,3], [file,6]])
+  ];
+  const paths = [];
+  for (const [file,rank] of positions) {
+    const [x,y] = px(file,rank);
+    const sides = file === 0 ? [1] : file === 8 ? [-1] : [-1,1];
+    for (const sx of sides) {
+      for (const sy of [-1,1]) {
+        const cornerX = x + sx * 4;
+        const cornerY = y + sy * 4;
+        paths.push(`M ${cornerX} ${cornerY + sy * 7} V ${cornerY} H ${cornerX + sx * 7}`);
+      }
+    }
+  }
+  return `<path d="${paths.join(" ")}" fill="none" stroke="#6d4a27" stroke-width="1.45" opacity=".72" stroke-linecap="square" stroke-linejoin="miter" pointer-events="none" aria-hidden="true"/>`;
+}
+
+function drawRiverEval() {
+  if (!Array.isArray(state.wdl) || state.wdl.length !== 3) return "";
+  const [red, draw, black] = state.wdl;
+  const x = M + 12, width = CELL * 8 - 24, centerY = M + CELL * 4.5;
+  const barY = centerY + 1, barHeight = 12;
+  const redWidth = width * red / 100;
+  const drawWidth = width * draw / 100;
+  const blackWidth = Math.max(0, width - redWidth - drawWidth);
+  const pct = value => value > 0 && value < 0.05 ? "<0.1" : value.toFixed(1);
+  return `<g class="river-eval" pointer-events="none" aria-hidden="true">
+    <rect x="${x-5}" y="${centerY-24}" width="${width+10}" height="48" rx="8" fill="#f1d9a4"/>
+    <text x="${x}" y="${centerY-7}" font-size="11" font-weight="bold" fill="#a83228">红胜 ${pct(red)}%</text>
+    <text x="${x+width/2}" y="${centerY-7}" font-size="11" font-weight="bold" fill="#6f5732" text-anchor="middle">和棋 ${pct(draw)}%</text>
+    <text x="${x+width}" y="${centerY-7}" font-size="11" font-weight="bold" fill="#263746" text-anchor="end">黑胜 ${pct(black)}%</text>
+    <defs><clipPath id="riverEvalClip"><rect x="${x}" y="${barY}" width="${width}" height="${barHeight}" rx="6"/></clipPath></defs>
+    <g clip-path="url(#riverEvalClip)">
+      <rect x="${x}" y="${barY}" width="${redWidth}" height="${barHeight}" fill="#d95445"/>
+      <rect x="${x+redWidth}" y="${barY}" width="${drawWidth}" height="${barHeight}" fill="#d6bb82"/>
+      <rect x="${x+redWidth+drawWidth}" y="${barY}" width="${blackWidth}" height="${barHeight}" fill="#40566b"/>
+    </g>
+    <rect x="${x}" y="${barY}" width="${width}" height="${barHeight}" rx="6" fill="none" stroke="#765b39" stroke-width="1" opacity=".75"/>
+  </g>`;
+}
+
+function render() {
+  let svg = drawPieceDefs() + drawBoardLines() + drawPositionMarks() + drawRiverEval();
+  // 高亮：仅 AI 的上一步（自己走的不标绿框）
+  const lastByAI = state.lastMove &&
+        ((state.moves.length % 2 === 1 ? "w" : "b") !== state.human);
+  if (lastByAI) {
+    const {ff,fr,tf,tr} = parseUci(state.lastMove);
+    for (const [f,r] of [[ff,fr],[tf,tr]]) {
+      const [x,y]=px(f,r);
+      svg += `<rect x="${x-27}" y="${y-27}" width="54" height="54" fill="none" stroke="#2e7d32" stroke-width="2" rx="4"/>`;
+    }
+  }
+  // 选中点的合法落子点
+  if (state.selected != null) {
+    for (const m of state.legal) {
+      const p = parseUci(m);
+      if (p.ff===state.selected.f && p.fr===state.selected.r) {
+        const [x,y]=px(p.tf,p.tr);
+        const cap = state.board[p.tr][p.tf];
+        svg += cap
+          ? `<circle cx="${x}" cy="${y}" r="29" fill="none" stroke="#1565c0" stroke-width="3"/>`
+          : `<circle cx="${x}" cy="${y}" r="8" fill="#1565c0" opacity=".6"/>`;
+      }
+    }
+    const [sx,sy]=px(state.selected.f, state.selected.r);
+    svg += `<circle cx="${sx}" cy="${sy}" r="27" fill="none" stroke="#1565c0" stroke-width="3"/>`;
+  }
+  // 棋子
+  for (let r=0;r<10;r++) for (let f=0;f<9;f++){
+    const pc = state.board[r][f];
+    if (!pc) continue;
+    const [x,y]=px(f,r); const [chr,col]=CH[pc];
+    const color = col==="r" ? "#c0392b" : "#1a1a1a";
+    svg += `<g class="cell" data-f="${f}" data-r="${r}">
+      <g class="piece-shell" filter="url(#pieceShadow)">
+        <circle cx="${x}" cy="${y+3}" r="25" fill="url(#pieceEdge)" stroke="#75401f" stroke-width="1.2"/>
+        <circle cx="${x}" cy="${y}" r="24" fill="url(#pieceFace)" stroke="#9b5d2e" stroke-width="1.4"/>
+        <circle cx="${x}" cy="${y}" r="20.5" fill="none" stroke="${color}" stroke-width="1.45" opacity=".92"/>
+        <ellipse cx="${x-7}" cy="${y-10}" rx="9" ry="4.5" fill="#fff9e8" opacity=".25" transform="rotate(-22 ${x-7} ${y-10})"/>
+        <text x="${x}" y="${y+8.5}" font-size="25.5" text-anchor="middle" fill="${color}" font-weight="bold" stroke="${color}" stroke-width=".18" paint-order="stroke">${chr}</text>
+      </g>
+    </g>`;
+  }
+  // 透明点击层（每个交叉点）
+  for (let r=0;r<10;r++) for (let f=0;f<9;f++){
+    const [x,y]=px(f,r);
+    svg += `<rect class="hit" data-f="${f}" data-r="${r}" x="${x-29}" y="${y-29}" width="58" height="58" fill="transparent"/>`;
+  }
+  board.innerHTML = svg;
+  // 交互统一由 board 上的指针事件处理（见 onPointerDown/Move/Up），点击与拖动共用
+}
+
+function aiOn(){ return document.getElementById("aiToggle").checked; }
+function liveEvalOn(){ return document.getElementById("liveEval").checked; }
+function sideToMove(){ return state.moves.length % 2 === 0 ? "w" : "b"; }
+
+async function post(url, body, signal=null){
+  const options = {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body)};
+  if (signal) options.signal = signal;
+  const r = await fetch(url, options);
+  const data = await r.json();
+  if (!r.ok || data.error) throw new Error(data.error || `HTTP ${r.status}`);
+  return data;
+}
+
+// 把引擎返回（根局面走子方视角）的评估换算成红方视角。
+// WDL 是有限搜索下的模型估计；“胜 + 一半和”是期望得分，不是胜率。
+function redWDLPercentages(res, engCol){
+  const raw = Array.isArray(res.wdl) && res.wdl.length === 3 &&
+        res.wdl.every(v => Number.isFinite(v) && v >= 0) ? res.wdl : null;
+  if (!raw) return null;
+  const values = engCol === "w" ? raw : [raw[2], raw[1], raw[0]];
+  const total = values[0] + values[1] + values[2];
+  return total > 0 ? values.map(value => value / total * 100) : null;
+}
+
+function evalText(res, engCol){
+  const flip = engCol === "w" ? 1 : -1;
+  const redMate  = res.mate  == null ? null : res.mate * flip;
+  const redScore = res.score == null ? null : res.score * flip;
+  const redWDL = redWDLPercentages(res, engCol);
+  if (redMate != null){
+    if (redMate > 0) return `<div class="eval-head">红方 ${redMate} 步之内绝杀</div>`;
+    if (redMate < 0) return `<div class="eval-head">黑方 ${-redMate} 步之内绝杀</div>`;
+  }
+  const parts = [];
+  if (redScore != null){
+    const lead = (Math.abs(redScore)/100).toFixed(1);
+    const summary = redScore > 20 ? `红方占优 +${lead}`
+                  : redScore < -20 ? `黑方占优 +${lead}` : "双方均势";
+    parts.push(`<div class="eval-head">${summary}</div>`);
+  }
+  if (redWDL){
+    const pct = value => value > 0 && value < 0.05 ? "<0.1" : value.toFixed(1);
+    const expected = (redWDL[0] + redWDL[1]/2).toFixed(1);
+    parts.push(`<div class="wdl-grid" title="当前搜索的模型估计，不是理论结果或最终保证">
+      <div class="wdl-item win">红胜<b>${pct(redWDL[0])}%</b></div>
+      <div class="wdl-item draw">和棋<b>${pct(redWDL[1])}%</b></div>
+      <div class="wdl-item loss">黑胜<b>${pct(redWDL[2])}%</b></div>
+    </div>`);
+    parts.push(`<div class="expected" title="期望得分 = 胜率 + 一半和棋率，不等于获胜概率">红方期望得分 <b>${expected}%</b></div>`);
+  }
+  return parts.join("");
+}
+
+function searchText(res){
+  const parts = [];
+  if (res.eval_depth != null) parts.push(`<span class="explain" title="已完整计算的主要搜索层数；1层约等于一方走一步">深度 ${res.eval_depth}</span>`);
+  else if (res.depth != null) parts.push(`<span class="explain" title="当前搜索到的主要层数；1层约等于一方走一步">深度 ${res.depth}</span>`);
+  if (res.nodes != null){
+    const n = res.nodes >= 1000000 ? `${(res.nodes/1000000).toFixed(1)}M` : `${Math.round(res.nodes/1000)}K`;
+    parts.push(`<span class="explain" title="引擎搜索过的局面数量；M=百万，K=千">节点 ${n}</span>`);
+  }
+  const ms = res.search_ms != null ? res.search_ms : res.think_ms;
+  if (ms != null && ms > 0) parts.push(`<span>用时 ${(ms/1000).toFixed(1)}s</span>`);
+  if (res.eval_exact === false) parts.push(`<span class="pending">评估尚未收敛</span>`);
+  return parts.length ? `<div class="search-meta">${parts.join("")}</div>` : "";
+}
+function setStatus(msg){ document.getElementById("status").innerHTML = msg; }
+function renderMoves(){
+  let s="";
+  for (let i=0;i<state.moves.length;i++){
+    if (i%2===0) s += `<span class="tag">${(i/2+1)+".".padEnd(3)}</span> `;
+    s += state.moves[i] + (i%2===0 ? "  " : "\n");
+  }
+  const ml=document.getElementById("movelist"); ml.textContent="";
+  ml.innerHTML=s || '<span class="log-empty">暂无着法记录</span>';
+  requestAnimationFrame(() => { ml.scrollTop = ml.scrollHeight; });
+}
+
+async function refreshLegal(){
+  const res = await post("/api/legal", {moves: state.moves});
+  state.legal = res.moves || [];
+}
+
+function autoSingleOn(){ return document.getElementById("autoSingle").checked; }
+function movesFrom(f, r){ return state.legal.filter(m=>{const p=parseUci(m);return p.ff===f&&p.fr===r;}); }
+
+// 选中一个棋子；若开启“唯一走法自动走”且该子只有一种走法，则直接走
+async function selectPiece(f, r){
+  const mv = movesFrom(f, r);
+  if (mv.length === 0) return;                       // 该子无合法走法，忽略
+  if (autoSingleOn() && mv.length === 1){ await humanMove(mv[0]); return; }
+  state.selected = {f, r}; render();
+}
+
+async function onClick(f, r){
+  if (state.busy || state.anim || state.resolving || state.over) return;
+  const pc = state.board[r][f];
+  // 只允许选中当前轮到走子的一方；AI 是否介入不限制手动操作。
+  const pcSide = pc ? (pc===pc.toUpperCase() ? "w" : "b") : null;
+  const mine = pcSide === sideToMove();
+  if (state.selected==null){
+    if (mine) await selectPiece(f, r);
+    return;
+  }
+  // 已选中 -> 尝试落子
+  const uci = "abcdefghi"[state.selected.f]+state.selected.r+"abcdefghi"[f]+r;
+  if (state.legal.includes(uci)){
+    await humanMove(uci);
+  } else if (mine){
+    await selectPiece(f, r);             // 改选另一子（同样适用自动走）
+  } else {
+    state.selected=null; render();
+  }
+}
+
+// ===== 指针交互：轻点=选子/落子（原逻辑），拖动=拖拽落子 =====
+function eventToSvg(evt){
+  const pt = board.createSVGPoint();
+  pt.x = evt.clientX; pt.y = evt.clientY;
+  const m = board.getScreenCTM();
+  return m ? pt.matrixTransform(m.inverse()) : null;
+}
+function pxInv(sx, sy){                       // 屏幕(SVG)坐标 -> 棋盘交叉点(f,r)
+  const cf = Math.round((sx - M)/CELL), cr = Math.round((sy - M)/CELL);
+  const f = state.flipped ? 8 - cf : cf;
+  const r = state.flipped ? cr : 9 - cr;
+  return (f<0||f>8||r<0||r>9) ? null : {f, r};
+}
+function squareFromEvent(evt){ const p = eventToSvg(evt); return p ? pxInv(p.x, p.y) : null; }
+
+let press = null;   // 当前按下/拖动状态
+
+function onPointerDown(evt){
+  if (evt.button && evt.button !== 0) return;               // 仅左键
+  if (state.busy || state.anim || state.resolving || state.over) return;
+  const sq = squareFromEvent(evt);
+  if (!sq) return;
+  evt.preventDefault();                    // 阻止拖动时的文本选择/图像拖拽
+  const pc = state.board[sq.r][sq.f];
+  const pcSide = pc ? (pc===pc.toUpperCase() ? "w" : "b") : null;
+  const mv = (pcSide === sideToMove()) ? movesFrom(sq.f, sq.r) : [];
+  press = { sq, x:evt.clientX, y:evt.clientY, moved:false, dragging:false,
+            canDrag: mv.length>0, moves:mv, ghost:null, cx:0, cy:0, pid:evt.pointerId };
+  try{ board.setPointerCapture(evt.pointerId); }catch(e){}
+}
+
+function onPointerMove(evt){
+  if (!press) return;
+  if (!press.moved){
+    if (Math.hypot(evt.clientX-press.x, evt.clientY-press.y) < 6) return;  // 抖动阈值
+    press.moved = true;
+    if (press.canDrag){                       // 越过阈值且按在可走的子上 -> 进入拖动
+      press.dragging = true;
+      state.selected = {f:press.sq.f, r:press.sq.r};
+      render();                               // 显示选中与合法落点
+      const [cx,cy] = px(press.sq.f, press.sq.r); press.cx = cx; press.cy = cy;
+      const orig = board.querySelector(`.cell[data-f="${press.sq.f}"][data-r="${press.sq.r}"]`);
+      if (orig){
+        const g = orig.cloneNode(true);                 // 先克隆（此时仍不透明）
+        g.setAttribute("class","ghost"); g.style.pointerEvents = "none"; g.style.opacity = "1";
+        board.appendChild(g); press.ghost = g;
+        orig.style.opacity = "0.28";                     // 再把原位淡出，表示已拿起
+      }
+    }
+  }
+  if (press.dragging && press.ghost){
+    const p = eventToSvg(evt);
+    if (p) press.ghost.setAttribute("transform", `translate(${p.x-press.cx},${p.y-press.cy})`);
+  }
+}
+
+async function onPointerUp(evt){
+  if (!press) return;
+  const p = press; press = null;
+  try{ board.releasePointerCapture(evt.pointerId); }catch(e){}
+  if (window.getSelection) window.getSelection().removeAllRanges();   // 清掉可能的选区
+  if (p.ghost) p.ghost.remove();
+  if (p.dragging){                            // 拖拽落子
+    const t = squareFromEvent(evt);
+    const uci = t ? ("abcdefghi"[p.sq.f]+p.sq.r+"abcdefghi"[t.f]+t.r) : null;
+    if (uci && p.moves.includes(uci)) await humanMove(uci);
+    else { state.selected = null; render(); }  // 落在非法处 -> 取消，复位
+  } else {
+    await onClick(p.sq.f, p.sq.r);             // 视为轻点 -> 沿用原点击逻辑
+  }
+}
+
+function onPointerCancel(){
+  if (!press) return;
+  if (press.ghost) press.ghost.remove();
+  press = null; state.selected = null; render();
+}
+
+// 立体落子：先轻提棋子，再短距离移动，最后平稳落下。
+function animateMove(uci){
+  return new Promise(resolve=>{
+    const {ff,fr,tf,tr}=parseUci(uci);
+    const [sx,sy]=px(ff,fr), [tx,ty]=px(tf,tr);
+    const g = board.querySelector(`.cell[data-f="${ff}"][data-r="${fr}"]`);
+    if(!g){ resolve(); return; }
+    g.parentNode.appendChild(g);          // 置顶，移动时盖住其它棋子
+    g.classList.add("moving");
+    g.style.pointerEvents = "none";
+    const dx=tx-sx, dy=ty-sy;
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const dur=reduceMotion ? 120 : 290, maxLift=reduceMotion ? 0 : 5, t0=performance.now();
+    const ease = value => value < .5 ? 2*value*value : 1-Math.pow(-2*value+2,2)/2;
+    (function frame(now){
+      const p=Math.min(1,(now-t0)/dur);
+      let move, lift;
+      if (p < .16){
+        move = 0;
+        lift = ease(p/.16);
+      } else if (p < .82){
+        move = ease((p-.16)/.66);
+        lift = 1;
+      } else {
+        move = 1;
+        lift = 1-ease((p-.82)/.18);
+      }
+      const scale = 1 + lift*.045;
+      g.setAttribute("transform", `translate(${dx*move} ${dy*move-maxLift*lift}) translate(${sx} ${sy}) scale(${scale}) translate(${-sx} ${-sy})`);
+      if(p<1) requestAnimationFrame(frame);
+      else { g.classList.remove("moving"); resolve(); }
+    })(performance.now());
+  });
+}
+
+// 统一走子：先渲染走子前局面 -> 滑动动画 -> 落子并刷新
+async function makeMove(uci, withSound=false){
+  cancelLiveEvaluation();
+  state.selected=null; state.anim=true;
+  render();
+  const {tf,tr} = parseUci(uci);
+  const captured = withSound && state.board[tr][tf] != null;
+  const nextBoard = state.board.map(row => row.slice());
+  applyMove(nextBoard, uci);
+  const nextSide = sideToMove() === "w" ? "b" : "w";
+  const sound = withSound ? (isKingInCheck(nextBoard, nextSide) ? "check"
+              : captured ? "capture" : "move") : null;
+  await animateMove(uci);
+  if (sound) playSound(sound);            // 仅 AI 落子发声
+  state.board = nextBoard;
+  state.moves.push(uci); state.lastMove=uci;
+  state.lastMoveByAI = withSound;
+  state.anim=false;
+  render(); renderMoves();
+}
+
+async function humanMove(uci){
+  const movingSide = sideToMove();
+  await makeMove(uci, false);
+  await afterMove(movingSide === state.human); // 只在手动走己方棋后自动应着
+}
+
+let engineAbortController = null;
+let evaluationAbortController = null;
+
+function cancelLiveEvaluation(){
+  if (!evaluationAbortController) return;
+  const controller = evaluationAbortController;
+  evaluationAbortController = null;
+  controller.abort();
+}
+
+async function evaluatePosition(){
+  if (!liveEvalOn() || state.over) return;
+  cancelLiveEvaluation();
+  const movesKey = state.moves.join(" ");
+  const evalSide = sideToMove();
+  const lvl = +document.getElementById("level").value;
+  const controller = new AbortController();
+  evaluationAbortController = controller;
+  let res;
+  try {
+    res = await post("/api/analyze", {moves: state.moves, level: lvl}, controller.signal);
+  } catch (e) {
+    if (evaluationAbortController === controller) evaluationAbortController = null;
+    if (e.name !== "AbortError" && movesKey === state.moves.join(" ")){
+      setStatus("胜率评估错误："+e.message);
+    }
+    return;
+  }
+  if (evaluationAbortController === controller) evaluationAbortController = null;
+  if (!liveEvalOn() || state.over || movesKey !== state.moves.join(" ")) return;
+  state.wdl = redWDLPercentages(res, evalSide);
+  const detail = [evalText(res, evalSide), searchText(res)].filter(Boolean).join("");
+  if (detail) setStatus(detail);
+  render();
+}
+
+async function engineMove(replyAfter=false){
+  if (state.busy || state.anim || state.resolving || state.over) return;
+  state.busy=true; setStatus("🤔 引擎思考中…");
+  const engineSide = sideToMove();
+  const lvl = +document.getElementById("level").value;
+  const controller = new AbortController();
+  engineAbortController = controller;
+  let res;
+  try {
+    res = await post("/api/engine", {moves: state.moves, level: lvl}, controller.signal);
+  } catch (e) {
+    if (engineAbortController === controller) engineAbortController = null;
+    state.busy=false;
+    if (e.name === "AbortError"){
+      setStatus("AI 已取消。"); render(); return;
+    }
+    setStatus("引擎错误："+e.message);
+    return;
+  }
+  if (engineAbortController === controller) engineAbortController = null;
+  state.busy=false;
+  const bm = res.bestmove;
+  if (!bm || bm==="(none)"){ endGame(engineSide !== state.human); return; }
+  if (!liveEvalOn()) state.wdl = redWDLPercentages(res, engineSide);
+  await makeMove(bm, true);
+  const ev = evalText(res, engineSide);
+  const search = searchText(res);
+  const base = res.random ? "引擎走了一步随机着法。" : "";
+  const detail = [ev, search].filter(Boolean).join("");
+  if (!liveEvalOn()) setStatus(base && detail ? `${base}<div class="engine-detail">${detail}</div>` : base || detail);
+  else if (base) setStatus(base);
+  await afterMove(replyAfter);
+}
+
+async function afterMove(autoReply=false){
+  state.resolving=true;
+  await refreshLegal();
+  if (state.legal.length===0){
+    state.resolving=false; endGame(!(sideToMove()===state.human)); return;
+  }
+  state.resolving=false;
+  if (autoReply && aiOn() && !state.over){ await engineMove(false); }
+  else {
+    render();
+    if (liveEvalOn() && !state.over) await evaluatePosition();
+  }
+}
+
+function endGame(humanWon){
+  cancelLiveEvaluation();
+  state.over=true; state.selected=null; render();
+  const winner = sideToMove() === "w" ? "b" : "w";
+  stopSound();
+  if (state.lastMoveByAI) playSound(winner === "w" ? "redWin" : "blackWin");
+  setStatus(humanWon ? "🎉 <b>你赢了！</b>对方无合法着法。" : "💀 <b>你输了</b>，已无合法着法。再来一局？");
+}
+
+async function newGame(){
+  if (state.anim || state.resolving) return;
+  cancelLiveEvaluation();
+  if (engineAbortController){
+    const controller = engineAbortController;
+    engineAbortController = null;
+    controller.abort();
+  }
+  stopSound();
+  state.board = fenToBoard(START);
+  state.moves=[]; state.lastMove=null; state.selected=null; state.wdl=null;
+  state.lastMoveByAI=false;
+  state.over=false; state.busy=false; state.resolving=true;
+  state.human = document.getElementById("side").value;
+  state.flipped = (state.human === "b");   // 执黑时自动翻转，让自己在下方
+  render(); renderMoves();
+  await refreshLegal();
+  state.resolving=false;
+  if (aiOn() && state.human === "b"){ await engineMove(false); }
+  else {
+    setStatus("你执"+(state.human==="w"?"红":"黑")+"，点击棋子走棋。");
+    if (liveEvalOn()) await evaluatePosition();
+  }
+}
+
+function switchSide(){
+  const sideSelect = document.getElementById("side");
+  const nextSide = sideSelect.value;
+  // 引擎搜索或落子动画过程中不能安全换边，恢复为当前选择。
+  if (state.busy || state.anim || state.resolving){ sideSelect.value = state.human; return; }
+
+  state.human = nextSide;
+  state.selected = null;
+  render();
+
+  if (state.over) return;
+  const sideName = state.human === "w" ? "红方" : "黑方";
+  setStatus(`已切换执${sideName}，AI 不会自动替当前方落子。`);
+}
+
+async function undo(){
+  if (state.busy || state.anim || state.resolving) return;
+  cancelLiveEvaluation();
+  stopSound();
+  // 退回到上一次轮到“我”的局面（撤销 引擎+我 各一步）
+  if (state.moves.length>=2) state.moves.splice(-2,2);
+  else state.moves=[];
+  state.board=fenToBoard(START); state.moves.forEach(m=>applyMove(state.board,m));
+  state.lastMove = state.moves.length? state.moves[state.moves.length-1] : null;
+  state.selected=null; state.wdl=null; state.over=false; state.lastMoveByAI=false;
+  render(); renderMoves(); await refreshLegal();
+  setStatus("已悔棋。");
+  if (liveEvalOn()) await evaluatePosition();
+}
+
+document.getElementById("newgame").addEventListener("click", newGame);
+document.getElementById("undo").addEventListener("click", undo);
+document.getElementById("assistMove").addEventListener("click", ()=>{
+  const replyAfter = aiOn() && sideToMove() === state.human;
+  engineMove(replyAfter);
+});
+document.getElementById("flip").addEventListener("click", ()=>{ state.flipped = !state.flipped; render(); });
+const logDialog = document.getElementById("logDialog");
+document.getElementById("openLog").addEventListener("click", ()=>{
+  renderMoves();
+  logDialog.showModal();
+});
+document.getElementById("closeLog").addEventListener("click", ()=>logDialog.close());
+logDialog.addEventListener("click", evt=>{ if (evt.target === logDialog) logDialog.close(); });
+document.addEventListener("keydown", evt=>{
+  if (evt.key === "Escape" && logDialog.open) logDialog.close();
+});
+document.getElementById("side").addEventListener("change", switchSide);
+document.getElementById("level").addEventListener("change", ()=>{
+  if (liveEvalOn() && !state.over) evaluatePosition();
+});
+document.getElementById("aiToggle").addEventListener("change", ()=>{
+  if (!aiOn() && engineAbortController) engineAbortController.abort();
+  if (state.over) return;
+  setStatus(aiOn() ? "AI 已加入：你走完己方棋后它会自动应着；需要当前方由 AI 走可点击“AI 帮走一步”。"
+                   : "AI 已退出：可手动走双方，也可点击“AI 帮走一步”。");
+  render();
+});
+document.getElementById("liveEval").addEventListener("change", async ()=>{
+  cancelLiveEvaluation();
+  if (state.over) return;
+  if (liveEvalOn()) await evaluatePosition();
+  else {
+    state.wdl = null;
+    setStatus("实时胜率已关闭。");
+    render();
+  }
+});
+// 棋盘指针事件（点击 + 拖动共用）
+board.addEventListener("pointerdown", onPointerDown);
+board.addEventListener("pointermove", onPointerMove);
+board.addEventListener("pointerup", onPointerUp);
+board.addEventListener("pointercancel", onPointerCancel);
+// 初始仅画空棋盘
+state = {board: fenToBoard(START), moves:[], legal:[], selected:null, lastMove:null,
+         lastMoveByAI:false, wdl:null, human:"w", over:true, busy:false, resolving:false,
+         flipped:false, anim:false};
+render();
+</script>
+</body>
+</html>

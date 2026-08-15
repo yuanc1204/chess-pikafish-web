@@ -1,0 +1,25 @@
+# 引擎下载整包（冗余，可从 GitHub 重新下载）
+Pikafish/Pikafish.7z
+
+# 其它平台二进制（本机 Windows 用不到）
+Pikafish/Linux/
+Pikafish/MacOS/
+Pikafish/Android/
+
+# Windows 各 CPU 档位原始二进制（已挑选 vnni512 复制为 pikafish.exe）
+Pikafish/Windows/
+
+# 杂项
+*.log
+__pycache__/
+
+# Android 构建产物与本机 SDK 路径
+/android/.gradle/
+/android/local.properties
+/android/app/build/
+
+# 录屏源文件（游戏使用的是 web/audio/ 下提取后的音效）
+/音频/
+
+# Claude Code 本地个人设置（不入库）
+.claude/settings.local.json
