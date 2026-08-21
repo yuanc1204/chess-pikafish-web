@@ -159,7 +159,7 @@
     <button id="flip">⇅ 翻转棋盘</button>
   </div>
   <div class="row">
-    <button id="assistMove" title="替当前方走一步；若自动应着开启，对手随后正常回复">✨ AI 帮走一步</button>
+    <button id="assistMove" title="固定使用第 4 档（约 0.1 秒）替当前方走一步；若自动应着开启，对手随后按所选难度回复">✨ AI 帮走一步</button>
   </div>
   <div class="row checks">
     <label class="chk" title="所选一方落子后，AI 自动替对手回复一步"><input type="checkbox" id="aiToggle" checked> AI 自动应着</label>
@@ -193,6 +193,7 @@
 <script>
 const SVG = "http://www.w3.org/2000/svg";
 const M = 40, CELL = 60;               // 边距、格距
+const ASSIST_LEVEL = 4;                 // “AI 帮走一步”固定使用高手档
 const board = document.getElementById("board");
 const START = "rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR";
 const CH = {
@@ -787,11 +788,11 @@ async function evaluatePosition(){
   render();
 }
 
-async function engineMove(replyAfter=false){
+async function engineMove(replyAfter=false, levelOverride=null){
   if (state.busy || state.anim || state.resolving || state.over) return;
   state.busy=true; setStatus("🤔 引擎思考中…");
   const engineSide = sideToMove();
-  const lvl = +document.getElementById("level").value;
+  const lvl = levelOverride ?? +document.getElementById("level").value;
   const controller = new AbortController();
   engineAbortController = controller;
   let res;
@@ -903,7 +904,7 @@ document.getElementById("newgame").addEventListener("click", newGame);
 document.getElementById("undo").addEventListener("click", undo);
 document.getElementById("assistMove").addEventListener("click", ()=>{
   const replyAfter = aiOn() && sideToMove() === state.human;
-  engineMove(replyAfter);
+  engineMove(replyAfter, ASSIST_LEVEL);
 });
 document.getElementById("flip").addEventListener("click", ()=>{ state.flipped = !state.flipped; render(); });
 const logDialog = document.getElementById("logDialog");
