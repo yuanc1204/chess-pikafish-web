@@ -726,22 +726,22 @@ function animateMove(uci){
 }
 
 // 统一走子：先渲染走子前局面 -> 滑动动画 -> 落子并刷新
-async function makeMove(uci, withSound=false){
+async function makeMove(uci, byAI=false){
   cancelLiveEvaluation();
   state.selected=null; state.anim=true;
   render();
   const {tf,tr} = parseUci(uci);
-  const captured = withSound && state.board[tr][tf] != null;
+  const captured = state.board[tr][tf] != null;
   const nextBoard = state.board.map(row => row.slice());
   applyMove(nextBoard, uci);
   const nextSide = sideToMove() === "w" ? "b" : "w";
-  const sound = withSound ? (isKingInCheck(nextBoard, nextSide) ? "check"
-              : captured ? "capture" : "move") : null;
+  const sound = isKingInCheck(nextBoard, nextSide) ? "check"
+              : captured ? "capture" : "move";
   await animateMove(uci);
-  if (sound) playSound(sound);            // 仅 AI 落子发声
+  playSound(sound);                       // 玩家与 AI 落子均播放对应音效
   state.board = nextBoard;
   state.moves.push(uci); state.lastMove=uci;
-  state.lastMoveByAI = withSound;
+  state.lastMoveByAI = byAI;
   state.anim=false;
   render(); renderMoves();
 }
@@ -841,7 +841,7 @@ function endGame(humanWon){
   state.over=true; state.selected=null; render();
   const winner = sideToMove() === "w" ? "b" : "w";
   stopSound();
-  if (state.lastMoveByAI) playSound(winner === "w" ? "redWin" : "blackWin");
+  playSound(winner === "w" ? "redWin" : "blackWin");
   setStatus(humanWon ? "🎉 <b>你赢了！</b>对方无合法着法。" : "💀 <b>你输了</b>，已无合法着法。再来一局？");
 }
 
